@@ -21,7 +21,7 @@ A cross-platform alternative to industry staples like MainStage and Gig Performe
 
 ## What is Stardust?
 
-Stardust is a host application for VST3 and CLAP audio plugins, aimed at live performance. You load the sounds you need for a show, organise them into songs and patches, and step through them on stage with a footswitch.
+Stardust is a virtual instrument host built for the stage. It loads your VST3 and CLAP plugins, handles MIDI and audio routing, and wraps them in a control surface designed for live performance — from a single keyboardist's rig to a full pit's worth of programmed sounds.
 
 It runs on macOS and Windows as first-class platforms. The full feature set is documented on the [wiki](https://github.com/ChaseCondon/Stardust/wiki).
 
