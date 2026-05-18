@@ -68,19 +68,27 @@ export function NodeLibraryPanel({
   }, [])
 
   return (
-    <Tabs defaultValue="base" className="flex h-full flex-col">
-      <TabsList className="grid h-9 grid-cols-2">
-        <TabsTrigger value="base" className="text-xs">
-          Base
-        </TabsTrigger>
-        <TabsTrigger value="my-blocks" className="text-xs">
-          My Blocks{savedComposites.length > 0 && ` (${savedComposites.length})`}
-        </TabsTrigger>
-      </TabsList>
+    <Tabs
+      defaultValue="base"
+      className="flex h-full flex-col rounded-xl border bg-card"
+    >
+      <div className="border-b px-3 pt-3">
+        <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Node library
+        </div>
+        <TabsList className="grid h-8 grid-cols-2">
+          <TabsTrigger value="base" className="text-xs">
+            Base
+          </TabsTrigger>
+          <TabsTrigger value="my-blocks" className="text-xs">
+            My Blocks{savedComposites.length > 0 && ` (${savedComposites.length})`}
+          </TabsTrigger>
+        </TabsList>
+      </div>
 
       <TabsContent
         value="base"
-        className="min-h-0 flex-1 overflow-hidden pt-3"
+        className="min-h-0 flex-1 overflow-hidden p-3"
       >
         <ScrollArea className="-mr-2 h-full pr-2">
           <div className="flex flex-col gap-4">
@@ -98,7 +106,7 @@ export function NodeLibraryPanel({
 
       <TabsContent
         value="my-blocks"
-        className="min-h-0 flex-1 overflow-hidden pt-3"
+        className="min-h-0 flex-1 overflow-hidden p-3"
       >
         {savedComposites.length === 0 ? (
           <div className="grid h-full place-items-center px-4 text-center text-xs text-muted-foreground">

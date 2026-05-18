@@ -2,33 +2,62 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 import { PatchPort } from "./patch-port"
 import { NodeBody, PluginChip, hasPluginChip, pluginChipName } from "./node-body"
-import { CLASS_COLORS, classOf, type GraphNode } from "./_types"
+import { CLASS_COLORS, classOf, type GraphNode, type Port } from "./_types"
 
 export const NODE_WIDTH = 220
 
 /** Pixel height of a node's header band — used by the wire-layout helpers. */
 const HEADER_HEIGHT = 44
 
-export interface PatchNodeProps {
+export interface PortDragHandle {
+  /** Begin dragging a wire from this output port. */
+  onPortPointerDown?: (
+    nodeId: string,
+    portId: string,
+    e: React.PointerEvent
+  ) => void
+  /** Pointer entered an input port while a wire drag is in flight. */
+  onPortPointerEnter?: (
+    nodeId: string,
+    portId: string,
+    e: React.PointerEvent
+  ) => void
+  /** Pointer left an input port that we were hovering. */
+  onPortPointerLeave?: (nodeId: string, portId: string) => void
+  /** Pointer released on an input port — possibly completes a wire drag. */
+  onPortPointerUp?: (
+    nodeId: string,
+    portId: string,
+    e: React.PointerEvent
+  ) => void
+}
+
+export interface PatchNodeProps extends PortDragHandle {
   node: GraphNode
   selected?: boolean
-  /** Show signal-flow activity glow on the node frame (any-port activity). */
+  /** Show signal-flow activity glow on the node frame. */
   active?: boolean
   /** Per-port connected map: connected[portId] === true if any wire touches it. */
   connected?: Record<string, boolean>
-  /** Per-port highlighted map: highlighted[portId] === true while drawing a wire from/to it. */
+  /** Per-port highlighted map (drag-to-connect hover, etc). */
   highlighted?: Record<string, boolean>
   onSelect?: () => void
+  /** Drag started on the node body (not on a port). */
+  onBodyPointerDown?: (e: React.PointerEvent) => void
+  /** Right-click context menu request. */
+  onOpenMenu?: (anchor: { x: number; y: number }) => void
 }
 
 /**
  * A single graph node, styled like a guitar pedal: bold header strip with
  * class color + name + (for plugin nodes) the plugin chip; body shows
- * kind-specific inline controls (mini keyboard, transpose stepper, EQ knobs,
- * level meter, etc.); ports line both sides.
+ * kind-specific inline controls; ports line both sides.
  *
- * Geometry helpers below (portOffset, absolutePortPosition) keep the wire
- * layer in sync with port positions inside the node.
+ * Pointer handling:
+ *   - mousedown on the body (not on a port): selection + drag-to-move
+ *   - mousedown on an output port: starts a wire drag (handled at canvas level)
+ *   - mouseup on an input port during a wire drag: completes a connection
+ *   - context menu: opens via right-click
  */
 export function PatchNode({
   node,
@@ -37,6 +66,12 @@ export function PatchNode({
   connected,
   highlighted,
   onSelect,
+  onBodyPointerDown,
+  onOpenMenu,
+  onPortPointerDown,
+  onPortPointerEnter,
+  onPortPointerLeave,
+  onPortPointerUp,
 }: PatchNodeProps) {
   const cls = classOf(node.kind)
   const palette = CLASS_COLORS[cls]
@@ -51,9 +86,6 @@ export function PatchNode({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
       style={{
         width: NODE_WIDTH,
         borderColor: selected ? accent : undefined,
@@ -65,14 +97,25 @@ export function PatchNode({
       }}
       className={cn(
         "rounded-md border bg-card text-card-foreground transition-shadow",
-        "shadow-md hover:shadow-lg cursor-pointer select-none",
+        "shadow-md hover:shadow-lg select-none",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       )}
+      onContextMenu={(e) => {
+        if (!onOpenMenu) return
+        e.preventDefault()
+        onOpenMenu({ x: e.clientX, y: e.clientY })
+      }}
     >
-      {/* Header: class label / user name / optional plugin chip */}
+      {/* Header — also the drag handle. Click selects; press+drag moves. */}
       <div
-        className="flex items-center justify-between gap-2 rounded-t-md px-2.5 py-1.5"
+        className="flex cursor-grab items-center justify-between gap-2 rounded-t-md px-2.5 py-1.5 active:cursor-grabbing"
         style={{ background: headerBg, color: headerText, height: HEADER_HEIGHT }}
+        onPointerDown={(e) => {
+          // Left button only.
+          if (e.button !== 0) return
+          onSelect?.()
+          onBodyPointerDown?.(e)
+        }}
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
@@ -85,34 +128,41 @@ export function PatchNode({
         </div>
       </div>
 
-      {/* Body: inputs left | pedal-style mini widget center | outputs right */}
+      {/* Body */}
       <div className="grid grid-cols-[auto_1fr_auto] gap-1.5 px-1.5 py-2">
-        {/* Input ports */}
         <div className="flex min-w-0 flex-col gap-1.5 pr-1">
           {inputs.map((p) => (
-            <PatchPort
+            <PortContainer
               key={p.id}
+              node={node}
               port={p}
               connected={connected?.[p.id]}
               highlighted={highlighted?.[p.id]}
+              onPortPointerDown={onPortPointerDown}
+              onPortPointerEnter={onPortPointerEnter}
+              onPortPointerLeave={onPortPointerLeave}
+              onPortPointerUp={onPortPointerUp}
             />
           ))}
           {inputs.length === 0 && <span className="h-2" />}
         </div>
 
-        {/* Pedal-style body */}
         <div className="min-w-0">
           <NodeBody node={node} />
         </div>
 
-        {/* Output ports */}
         <div className="flex min-w-0 flex-col items-end gap-1.5 pl-1">
           {outputs.map((p) => (
-            <PatchPort
+            <PortContainer
               key={p.id}
+              node={node}
               port={p}
               connected={connected?.[p.id]}
               highlighted={highlighted?.[p.id]}
+              onPortPointerDown={onPortPointerDown}
+              onPortPointerEnter={onPortPointerEnter}
+              onPortPointerLeave={onPortPointerLeave}
+              onPortPointerUp={onPortPointerUp}
             />
           ))}
           {outputs.length === 0 && <span className="h-2" />}
@@ -122,19 +172,45 @@ export function PatchNode({
   )
 }
 
+/** Wraps PatchPort to intercept pointer events and forward node+port ids. */
+function PortContainer({
+  node,
+  port,
+  connected,
+  highlighted,
+  onPortPointerDown,
+  onPortPointerEnter,
+  onPortPointerLeave,
+  onPortPointerUp,
+}: {
+  node: GraphNode
+  port: Port
+  connected?: boolean
+  highlighted?: boolean
+} & PortDragHandle) {
+  return (
+    <div
+      onPointerDown={(e) => {
+        if (e.button !== 0) return
+        e.stopPropagation()
+        onPortPointerDown?.(node.id, port.id, e)
+      }}
+      onPointerEnter={(e) => onPortPointerEnter?.(node.id, port.id, e)}
+      onPointerLeave={() => onPortPointerLeave?.(node.id, port.id)}
+      onPointerUp={(e) => onPortPointerUp?.(node.id, port.id, e)}
+    >
+      <PatchPort port={port} connected={connected} highlighted={highlighted} />
+    </div>
+  )
+}
+
 // =============================================================================
 // Geometry helpers used by the canvas to draw wires between ports.
-//
-// We can't perfectly track the body's natural height without a measurement
-// pass, so we assume each port row sits at PORT_ROW_HEIGHT inside the body
-// region (which matches the gap-1.5 layout). For more accuracy in a future
-// pass, switch to a ResizeObserver / ref-based measurement.
 // =============================================================================
 
 const BODY_TOP_PAD = 10
 const PORT_ROW_HEIGHT = 20
 
-/** Pixel-space center of a port relative to the node's top-left corner. */
 export function portOffset(
   node: GraphNode,
   portId: string
@@ -146,11 +222,10 @@ export function portOffset(
   if (indexInSide < 0) return null
   const x = port.direction === "in" ? 0 : NODE_WIDTH
   const y =
-    HEADER_HEIGHT + BODY_TOP_PAD + indexInSide * PORT_ROW_HEIGHT + 5 // 5 ≈ port radius
+    HEADER_HEIGHT + BODY_TOP_PAD + indexInSide * PORT_ROW_HEIGHT + 5
   return { x, y }
 }
 
-/** Absolute canvas-space center of a port (node origin + offset). */
 export function absolutePortPosition(
   node: GraphNode,
   portId: string
@@ -158,4 +233,47 @@ export function absolutePortPosition(
   const offset = portOffset(node, portId)
   if (!offset) return null
   return { x: node.x + offset.x, y: node.y + offset.y }
+}
+
+/** Conservative node bounding box for wire-routing obstacle avoidance. */
+export function nodeBounds(node: GraphNode): {
+  x: number
+  y: number
+  width: number
+  height: number
+} {
+  // Estimate height: header + body padding + ports + body content room.
+  const portCount = Math.max(
+    node.ports.filter((p) => p.direction === "in").length,
+    node.ports.filter((p) => p.direction === "out").length
+  )
+  const bodyHeight = Math.max(
+    BODY_TOP_PAD + portCount * PORT_ROW_HEIGHT + 20,
+    // Bodies with mini-widgets (keyboards/pads) need more room:
+    minBodyHeightForKind(node.kind)
+  )
+  return {
+    x: node.x,
+    y: node.y,
+    width: NODE_WIDTH,
+    height: HEADER_HEIGHT + bodyHeight,
+  }
+}
+
+function minBodyHeightForKind(kind: GraphNode["kind"]): number {
+  switch (kind) {
+    case "source.keyboard":
+      return 60
+    case "source.pads":
+      return 70
+    case "instrument.plugin":
+    case "instrument.sine":
+      return 70
+    case "audio.eq":
+      return 60
+    case "sink.main-out":
+      return 60
+    default:
+      return 50
+  }
 }

@@ -4,42 +4,58 @@ import { cn } from "@/lib/utils"
 import { NODE_WIDTH } from "./patch-node"
 import type { CompositeBlock, GraphNode } from "./_types"
 
-const PADDING = 18
-/** Approximate visible height per node (header + ports). Conservative — the
- *  bounding box can be slightly oversized rather than clip a node. */
-const APPROX_NODE_HEIGHT = 160
+const PADDING = 22
+/** Approximate visible height per node. Bounding box can be slightly
+ *  oversized rather than clip. */
+const APPROX_NODE_HEIGHT = 170
 
 export interface CompositeBlockFrameProps {
   composite: CompositeBlock
-  nodes: GraphNode[] // contained nodes (already filtered by composite.contains)
+  nodes: GraphNode[]
+  selected?: boolean
   onToggleLock?: () => void
+  /** Click the label area — opens the composite's context menu. */
+  onOpenMenu?: (anchor: { x: number; y: number }) => void
 }
 
 /**
- * Visual frame for a composite block — a labelled bounding box wrapping a
- * sub-graph. Title sits in the top-left corner; lock icon next to it.
+ * Labelled bounding box wrapping a sub-graph. Title sits in the top-left
+ * corner. The title chip is high-contrast (card background, accent border,
+ * white text) so it stays readable against either light or dark themes.
  *
- * Layout: positioned at the bounding rect of contained nodes (plus padding).
- * Renders BEHIND nodes (z-index 0) so the frame appears as a backdrop.
- *
- * Interaction (lock/unlock, drag, edit-internals) lands later.
+ * The title chip is the context-menu click target. Right-click on the
+ * frame body opens the same menu.
  */
 export function CompositeBlockFrame({
   composite,
   nodes,
+  selected,
   onToggleLock,
+  onOpenMenu,
 }: CompositeBlockFrameProps) {
   if (nodes.length === 0) return null
 
   const rect = computeBounds(nodes)
+  // Different accent per lock state — amber for locked (use it as-is), violet for editable.
+  const accentVar = composite.locked ? "amber" : "violet"
+  const borderClass =
+    accentVar === "amber"
+      ? "border-amber-500/70"
+      : "border-violet-500/70"
+  const bgClass =
+    accentVar === "amber"
+      ? "bg-amber-500/[0.06]"
+      : "bg-violet-500/[0.06]"
+  const borderStyle = composite.locked ? "border-solid" : "border-dashed"
 
   return (
     <div
       className={cn(
-        "pointer-events-none absolute rounded-lg border-2",
-        composite.locked
-          ? "border-solid border-amber-500/50 bg-amber-500/[0.04]"
-          : "border-dashed border-violet-500/50 bg-violet-500/[0.04]"
+        "pointer-events-none absolute rounded-xl border-2",
+        borderClass,
+        bgClass,
+        borderStyle,
+        selected && "ring-2 ring-primary/40"
       )}
       style={{
         left: rect.x,
@@ -47,20 +63,41 @@ export function CompositeBlockFrame({
         width: rect.width,
         height: rect.height,
       }}
+      onContextMenu={(e) => {
+        if (!onOpenMenu) return
+        e.preventDefault()
+        onOpenMenu({ x: e.clientX, y: e.clientY })
+      }}
     >
-      {/* Title bar (top-left, sits on the border) */}
-      <div
+      {/* Title chip — high-contrast, click target for the menu */}
+      <button
+        type="button"
         className={cn(
-          "pointer-events-auto absolute -top-[14px] left-3 flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider shadow-sm",
-          composite.locked
-            ? "border-amber-500/40 bg-amber-500/[0.12] text-amber-500"
-            : "border-violet-500/40 bg-violet-500/[0.12] text-violet-400"
+          "pointer-events-auto absolute -top-[14px] left-3 flex items-center gap-1.5",
+          "rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider shadow-sm",
+          "bg-card text-foreground",
+          "hover:brightness-110",
+          accentVar === "amber"
+            ? "border-amber-400"
+            : "border-violet-400"
         )}
+        onClick={(e) => {
+          e.stopPropagation()
+          onOpenMenu?.({ x: e.clientX, y: e.clientY })
+        }}
+        title="Composite options"
       >
-        <button
-          type="button"
-          onClick={onToggleLock}
-          className="grid size-4 place-items-center rounded hover:bg-white/10"
+        <span
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleLock?.()
+          }}
+          role="button"
+          tabIndex={-1}
+          className={cn(
+            "grid size-4 place-items-center rounded hover:bg-muted",
+            accentVar === "amber" ? "text-amber-400" : "text-violet-400"
+          )}
           aria-label={composite.locked ? "Unlock composite" : "Lock composite"}
         >
           {composite.locked ? (
@@ -68,12 +105,11 @@ export function CompositeBlockFrame({
           ) : (
             <Unlock className="size-3" />
           )}
-        </button>
+        </span>
         <span className="normal-case">{composite.name}</span>
-        {composite.locked && (
-          <span className="opacity-60">· {nodes.length} blocks</span>
-        )}
-      </div>
+        <span className="text-muted-foreground">·</span>
+        <span className="text-muted-foreground">{nodes.length} blocks</span>
+      </button>
     </div>
   )
 }
