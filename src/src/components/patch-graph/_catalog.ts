@@ -1,0 +1,236 @@
+/**
+ * Catalog of available node kinds — the right-panel "Base" tab is built
+ * directly from this list. User-saved composites live in the "My Blocks"
+ * tab separately.
+ *
+ * Each spec carries its default port set + initial config. Per-instance
+ * port lists can grow (keyboard adding zone outs, mix node adding inputs).
+ */
+
+import type { GraphNode, NodeClass, NodeKind, Port } from "./_types"
+import { classOf } from "./_types"
+
+export interface NodeSpec {
+  kind: NodeKind
+  class: NodeClass
+  label: string
+  description: string
+  defaultPorts: () => Port[]
+  defaultConfig?: () => Record<string, unknown>
+}
+
+// =============================================================================
+// Spec catalog
+// =============================================================================
+
+export const NODE_CATALOG: NodeSpec[] = [
+  // -------------------------------------------------------------------------
+  // Sources
+  // -------------------------------------------------------------------------
+  {
+    kind: "source.keyboard",
+    class: "source",
+    label: "Keyboard",
+    description: "Piano keyboard. Add zone outs in settings to split the range.",
+    defaultPorts: () => [
+      { id: "out", label: "MIDI out", signal: "midi", direction: "out" },
+    ],
+  },
+  {
+    kind: "source.pads",
+    class: "source",
+    label: "Pads",
+    description: "Grid of pads. Add per-pad outs in settings.",
+    defaultPorts: () => [
+      { id: "out", label: "MIDI out", signal: "midi", direction: "out" },
+    ],
+  },
+  {
+    kind: "source.switch",
+    class: "source",
+    label: "Switch",
+    description: "Generic footswitch or button.",
+    defaultPorts: () => [
+      { id: "out", label: "MIDI out", signal: "midi", direction: "out" },
+    ],
+  },
+  {
+    kind: "source.sustain-pedal",
+    class: "source",
+    label: "Sustain pedal",
+    description: "Sustain footswitch — typically CC 64.",
+    defaultPorts: () => [
+      { id: "out", label: "MIDI out", signal: "midi", direction: "out" },
+    ],
+  },
+  {
+    kind: "source.expression-pedal",
+    class: "source",
+    label: "Expression pedal",
+    description: "Continuous foot pedal.",
+    defaultPorts: () => [
+      { id: "out", label: "MIDI out", signal: "midi", direction: "out" },
+    ],
+  },
+  {
+    kind: "source.pitch-wheel",
+    class: "source",
+    label: "Pitch wheel",
+    description: "Spring-loaded pitch bend wheel.",
+    defaultPorts: () => [
+      { id: "out", label: "MIDI out", signal: "midi", direction: "out" },
+    ],
+  },
+  {
+    kind: "source.mod-wheel",
+    class: "source",
+    label: "Mod wheel",
+    description: "Continuous wheel — typically CC 1.",
+    defaultPorts: () => [
+      { id: "out", label: "MIDI out", signal: "midi", direction: "out" },
+    ],
+  },
+  {
+    kind: "source.knob",
+    class: "source",
+    label: "Knob",
+    description: "Rotary control.",
+    defaultPorts: () => [
+      { id: "out", label: "MIDI out", signal: "midi", direction: "out" },
+    ],
+  },
+  {
+    kind: "source.fader",
+    class: "source",
+    label: "Fader",
+    description: "Linear control.",
+    defaultPorts: () => [
+      { id: "out", label: "MIDI out", signal: "midi", direction: "out" },
+    ],
+  },
+
+  // -------------------------------------------------------------------------
+  // MIDI processors
+  // -------------------------------------------------------------------------
+  {
+    kind: "midi.transpose",
+    class: "midi-processor",
+    label: "Transpose",
+    description: "Shift incoming MIDI notes by N semitones.",
+    defaultPorts: () => [
+      { id: "in", label: "MIDI in", signal: "midi", direction: "in" },
+      { id: "out", label: "MIDI out", signal: "midi", direction: "out" },
+    ],
+    defaultConfig: () => ({ semitones: 0 }),
+  },
+  {
+    kind: "midi.mix",
+    class: "midi-processor",
+    label: "MIDI mix",
+    description: "Sum multiple MIDI streams into one. Add inputs in settings.",
+    defaultPorts: () => [
+      { id: "in-1", label: "In 1", signal: "midi", direction: "in" },
+      { id: "in-2", label: "In 2", signal: "midi", direction: "in" },
+      { id: "out", label: "MIDI out", signal: "midi", direction: "out" },
+    ],
+  },
+
+  // -------------------------------------------------------------------------
+  // Instruments
+  // -------------------------------------------------------------------------
+  {
+    kind: "instrument.plugin",
+    class: "instrument",
+    label: "Plugin instrument",
+    description: "Load a CLAP or VST3 instrument plugin.",
+    defaultPorts: () => [
+      { id: "midi-in", label: "MIDI in", signal: "midi", direction: "in" },
+      { id: "audio-l", label: "Audio L", signal: "audio", direction: "out", config: { kind: "stereo", channel: "L" } },
+      { id: "audio-r", label: "Audio R", signal: "audio", direction: "out", config: { kind: "stereo", channel: "R" } },
+    ],
+    defaultConfig: () => ({ pluginUri: null, preset: null }),
+  },
+  {
+    kind: "instrument.sine",
+    class: "instrument",
+    label: "Built-in sine",
+    description: "Polyphonic sine synth with ADSR. Useful for testing.",
+    defaultPorts: () => [
+      { id: "midi-in", label: "MIDI in", signal: "midi", direction: "in" },
+      { id: "audio-l", label: "Audio L", signal: "audio", direction: "out", config: { kind: "stereo", channel: "L" } },
+      { id: "audio-r", label: "Audio R", signal: "audio", direction: "out", config: { kind: "stereo", channel: "R" } },
+    ],
+    defaultConfig: () => ({ polyphony: 8 }),
+  },
+
+  // -------------------------------------------------------------------------
+  // Audio effects
+  // -------------------------------------------------------------------------
+  {
+    kind: "audio.eq",
+    class: "audio-effect",
+    label: "EQ",
+    description: "3-band equalizer. Stereo in / stereo out.",
+    defaultPorts: () => [
+      { id: "in-l", label: "In L", signal: "audio", direction: "in", config: { kind: "stereo", channel: "L" } },
+      { id: "in-r", label: "In R", signal: "audio", direction: "in", config: { kind: "stereo", channel: "R" } },
+      { id: "out-l", label: "Out L", signal: "audio", direction: "out", config: { kind: "stereo", channel: "L" } },
+      { id: "out-r", label: "Out R", signal: "audio", direction: "out", config: { kind: "stereo", channel: "R" } },
+    ],
+    defaultConfig: () => ({ low: 0, mid: 0, high: 0 }),
+  },
+  {
+    kind: "audio.mix",
+    class: "audio-effect",
+    label: "Audio mix",
+    description: "Sum multiple audio streams. Add input pairs in settings.",
+    defaultPorts: () => [
+      { id: "in-1-l", label: "1 L", signal: "audio", direction: "in", config: { kind: "stereo", channel: "L" } },
+      { id: "in-1-r", label: "1 R", signal: "audio", direction: "in", config: { kind: "stereo", channel: "R" } },
+      { id: "in-2-l", label: "2 L", signal: "audio", direction: "in", config: { kind: "stereo", channel: "L" } },
+      { id: "in-2-r", label: "2 R", signal: "audio", direction: "in", config: { kind: "stereo", channel: "R" } },
+      { id: "out-l", label: "Out L", signal: "audio", direction: "out", config: { kind: "stereo", channel: "L" } },
+      { id: "out-r", label: "Out R", signal: "audio", direction: "out", config: { kind: "stereo", channel: "R" } },
+    ],
+  },
+
+  // -------------------------------------------------------------------------
+  // Sinks
+  // -------------------------------------------------------------------------
+  {
+    kind: "sink.main-out",
+    class: "sink",
+    label: "Main output",
+    description: "Routes to the show's primary audio output.",
+    defaultPorts: () => [
+      { id: "in-l", label: "In L", signal: "audio", direction: "in", config: { kind: "stereo", channel: "L" } },
+      { id: "in-r", label: "In R", signal: "audio", direction: "in", config: { kind: "stereo", channel: "R" } },
+    ],
+  },
+]
+
+export function findSpec(kind: NodeKind): NodeSpec | undefined {
+  return NODE_CATALOG.find((s) => s.kind === kind)
+}
+
+let nextId = 1
+export function makeNode(
+  kind: NodeKind,
+  position: { x: number; y: number }
+): GraphNode {
+  const spec = findSpec(kind)
+  if (!spec) throw new Error(`Unknown node kind: ${kind}`)
+  return {
+    id: `n${nextId++}`,
+    kind,
+    name: spec.label,
+    x: position.x,
+    y: position.y,
+    ports: spec.defaultPorts(),
+    config: spec.defaultConfig?.(),
+  }
+}
+
+export function nodeClass(node: GraphNode): NodeClass {
+  return classOf(node.kind)
+}
