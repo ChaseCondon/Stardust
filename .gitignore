@@ -6,7 +6,7 @@ debug/
 **/mutants.out*/
 
 # --- Tauri ---
-stardust-core/gen/
+src-tauri/gen/
 
 # --- Node / pnpm / Vite ---
 node_modules/
