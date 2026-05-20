@@ -3,12 +3,15 @@
 //! Stardust app process. Hosts the Tauri runtime, owns the Show/Song/Patch
 //! model, and drives the audio thread (via the stardust-core library).
 //!
-//! Phase v0.2 in progress: read-only Tauri commands wire the React UI to
-//! stardust-core. Engine-state commands (start/stop, route MIDI through
-//! plugin chains) land in a dedicated `engine` module so the audio
-//! thread + `!Send` plugin handles stay off the Tauri command pool.
+//! v0.4 wires engine-state commands. The dedicated `engine` module
+//! owns a thread that holds the `!Send` CLAP plugin instance; Tauri
+//! commands send intents to it and the UI listens for status updates
+//! on the `engine://status` event.
 
 mod commands;
+mod engine;
+
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -19,14 +22,22 @@ pub fn run() {
             commands::list_clap_plugins,
             commands::list_midi_inputs,
             commands::list_audio_outputs,
+            commands::engine_start,
+            commands::engine_stop,
+            commands::engine_status,
         ])
-        .setup(|_app| {
+        .setup(|app| {
             tracing_subscriber::fmt()
                 .with_env_filter(
                     tracing_subscriber::EnvFilter::try_from_default_env()
                         .unwrap_or_else(|_| "stardust=info,stardust_core=info".into()),
                 )
                 .init();
+
+            // Spawn the engine thread once at app startup; its handle
+            // lives in Tauri state for the rest of the process.
+            let handle = engine::spawn(app.handle().clone());
+            app.manage(handle);
             Ok(())
         })
         .run(tauri::generate_context!())

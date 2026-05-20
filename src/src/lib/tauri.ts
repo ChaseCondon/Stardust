@@ -13,6 +13,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core"
+import { listen, type UnlistenFn } from "@tauri-apps/api/event"
 
 // =============================================================================
 // Plugin discovery
@@ -66,6 +67,60 @@ export interface AudioOutputInfo {
 
 export function listAudioOutputs(): Promise<AudioOutputInfo[]> {
   return invoke<AudioOutputInfo[]>("list_audio_outputs")
+}
+
+// =============================================================================
+// Engine (plugin host)
+// =============================================================================
+
+export interface EngineStartArgs {
+  bundlePath: string
+  pluginId: string
+  midiInput: string
+  /** `null` → use the host's default audio output. */
+  audioOutput: string | null
+}
+
+/**
+ * Mirror of `engine::EngineStatus`. Tagged on `kind`; everything else
+ * is only present in `running` / `error`.
+ */
+export type EngineStatus =
+  | { kind: "idle" }
+  | {
+      kind: "running"
+      pluginName: string
+      pluginId: string
+      midiInput: string
+      audioOutput: string
+      sampleRate: number
+      channels: number
+      droppedEvents: number
+      sampleRateMismatch: boolean
+    }
+  | { kind: "error"; message: string }
+
+export function engineStart(args: EngineStartArgs): Promise<void> {
+  return invoke<void>("engine_start", { args })
+}
+
+export function engineStop(): Promise<void> {
+  return invoke<void>("engine_stop")
+}
+
+export function engineStatus(): Promise<EngineStatus> {
+  return invoke<EngineStatus>("engine_status")
+}
+
+/**
+ * Subscribe to engine status changes. The engine thread emits one
+ * event per state transition (Idle → Running, Stop, errors) plus
+ * periodic updates while running if the dropped-event counter ticks.
+ */
+export function onEngineStatus(
+  cb: (s: EngineStatus) => void,
+): Promise<UnlistenFn> {
+  return listen<EngineStatus>("engine://status", (e) => cb(e.payload))
 }
 
 // =============================================================================

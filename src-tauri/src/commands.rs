@@ -18,10 +18,13 @@
 //!   every engine failure mode in the public surface. Logs on the Rust
 //!   side carry the structured details for debugging.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use stardust_core::audio;
 use stardust_core::midi;
 use stardust_core::plugin::clap;
+use tauri::State;
+
+use crate::engine::{EngineCommand, EngineHandle, EngineStatus, StartConfig};
 
 // =============================================================================
 // Plugin discovery
@@ -147,4 +150,48 @@ pub async fn list_audio_outputs() -> Result<Vec<AudioOutputInfo>, String> {
                 .collect()
         })
         .map_err(|e| e.to_string())
+}
+
+// =============================================================================
+// Engine state
+//
+// The host runs on a dedicated OS thread (see `engine` module) because
+// `PluginInstance<H>` is `!Send`. These commands forward intent to that
+// thread; the UI hears about state changes via the `engine://status`
+// Tauri event, and can pull the current snapshot via `engine_status`.
+// =============================================================================
+
+/// What the UI sends with `engine_start`. Names come from
+/// `list_clap_plugins` / `list_midi_inputs` / `list_audio_outputs`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EngineStartArgs {
+    pub bundle_path: String,
+    pub plugin_id: String,
+    pub midi_input: String,
+    /// `null` → host default output device.
+    pub audio_output: Option<String>,
+}
+
+#[tauri::command]
+pub fn engine_start(
+    args: EngineStartArgs,
+    engine: State<'_, EngineHandle>,
+) -> Result<(), String> {
+    engine.send(EngineCommand::Start(StartConfig {
+        bundle_path: args.bundle_path.into(),
+        plugin_id: args.plugin_id,
+        midi_input: args.midi_input,
+        audio_output: args.audio_output,
+    }))
+}
+
+#[tauri::command]
+pub fn engine_stop(engine: State<'_, EngineHandle>) -> Result<(), String> {
+    engine.send(EngineCommand::Stop)
+}
+
+#[tauri::command]
+pub fn engine_status(engine: State<'_, EngineHandle>) -> EngineStatus {
+    engine.snapshot()
 }
