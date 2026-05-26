@@ -1,5 +1,5 @@
 import * as React from "react"
-import { AlertTriangle, FolderOpen, Save } from "lucide-react"
+import { AlertTriangle, FilePlus, FolderOpen, Save } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -28,6 +28,7 @@ export function ShowToolbar() {
   const dirty = useShowStore((s) => s.dirty)
   const showName = useShowStore((s) => s.showName)
   const replaceShow = useShowStore((s) => s.replaceShow)
+  const newShow = useShowStore((s) => s.newShow)
   const markClean = useShowStore((s) => s.markClean)
   const getDocument = useShowStore((s) => s.getDocument)
 
@@ -37,8 +38,22 @@ export function ShowToolbar() {
 
   if (!inTauri) return null
 
+  const confirmDiscardIfDirty = (): boolean => {
+    if (!dirty) return true
+    return window.confirm(
+      "You have unsaved changes. Discard them and start a new show?",
+    )
+  }
+
+  const onNew = () => {
+    if (busy) return
+    if (!confirmDiscardIfDirty()) return
+    newShow()
+  }
+
   const onOpen = async () => {
     if (busy) return
+    if (!confirmDiscardIfDirty()) return
     setBusy(true)
     try {
       const result = await openShowFile()
@@ -80,6 +95,17 @@ export function ShowToolbar() {
             aria-label="Unsaved changes"
           />
         )}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onNew}
+          disabled={busy}
+          className="gap-1.5"
+          title="Start a blank show — one song, one empty patch"
+        >
+          <FilePlus className="size-3.5" />
+          New Show
+        </Button>
         <Button
           size="sm"
           variant="ghost"

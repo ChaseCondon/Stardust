@@ -75,15 +75,38 @@ export function listAudioOutputs(): Promise<AudioOutputInfo[]> {
 // =============================================================================
 
 /**
- * Mirror of `engine::EngineStatus`. Tagged on `kind`; everything else
- * is only present in `running` / `error`.
+ * One hosted plugin in the running plan. The Running variant carries a
+ * list of these (v0.8b — multi-plugin chains).
+ */
+export interface HostedPluginStatus {
+  name: string
+  id: string
+  vendor: string
+}
+
+/**
+ * Counts of native DSP / MIDI nodes the running plan is executing.
+ * Surfaced in EnginePanel as a one-line summary.
+ */
+export interface NativeNodeCounts {
+  sine: number
+  eq: number
+  audioMix: number
+  midiTranspose: number
+  midiMix: number
+}
+
+/**
+ * Mirror of `engine::EngineStatus`. Tagged on `kind`; the Running
+ * payload was reshaped in v0.8b — it now carries a list of plugins and
+ * a count of native nodes instead of one plugin name/id.
  */
 export type EngineStatus =
   | { kind: "idle" }
   | {
       kind: "running"
-      pluginName: string
-      pluginId: string
+      plugins: HostedPluginStatus[]
+      nativeNodes: NativeNodeCounts
       /** `null` when running with no hardware MIDI — UI source only. */
       midiInput: string | null
       audioOutput: string
@@ -92,17 +115,15 @@ export type EngineStatus =
       droppedEvents: number
       sampleRateMismatch: boolean
     }
-  | { kind: "error"; message: string }
+  /** One or more plan-build / runtime errors. Pre-formatted by Rust. */
+  | { kind: "error"; messages: string[] }
 
 /**
- * Mirror of `commands::EngineStartError`. Distinguishes "patch has no
- * instrument" / "instrument has no plugin chosen" / "engine refused" so
- * the UI can point the user at the right fix.
+ * Mirror of `commands::EngineStartError`. Synchronous return only
+ * surfaces channel-closed failures since v0.8b — every plan-build /
+ * plugin-load failure comes back asynchronously via EngineStatus.Error.
  */
-export type EngineStartError =
-  | { kind: "noInstrumentNode" }
-  | { kind: "missingPluginConfig"; node: string }
-  | { kind: "engine"; message: string }
+export type EngineStartError = { kind: "engine"; message: string }
 
 /**
  * Start the engine from the currently-selected patch. The Rust side walks

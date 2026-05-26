@@ -263,6 +263,10 @@ export interface PatchEditorProps {
   savedComposites?: Array<{ id: string; name: string; nodeCount: number }>
   /** Source kinds advertised in the right-panel Sources group. */
   rigSources?: RigSource[]
+  /** Append a new song to the show. The outline's "Add song" button calls this. */
+  onAddSong?: () => void
+  /** Append a new empty patch to the given song. The outline's per-song "+" calls this. */
+  onAddPatch?: (songId: string) => void
 }
 
 export function PatchEditor({
@@ -285,6 +289,24 @@ export function PatchEditor({
   const [selectedNodeIds, setSelectedNodeIds] = React.useState<Set<string>>(new Set())
   const [selectedWireId, setSelectedWireId] = React.useState<string | undefined>()
   const [selectedCompositeId, setSelectedCompositeId] = React.useState<string | undefined>()
+
+  // Live CLAP plugin list — fed to the right-panel Library so dropping
+  // an instrument creates a pre-configured plugin node (no second-pass
+  // picker). Shared via zustand with the EnginePanel's scan.
+  const { plugins: installedPlugins } = usePluginScan()
+
+  // Rig sources shown in the Library's Sources group. We always prepend
+  // a synthetic "Built-in UI keyboard" entry so the user has at least
+  // one keyboard source available before the Rig page exists. It maps
+  // to `source.keyboard`, which is what hardware MIDI feeds into too —
+  // they coexist fine; the engine fans events to the first such node.
+  const augmentedRigSources: RigSource[] = React.useMemo(() => {
+    const builtin: RigSource = {
+      kind: "source.keyboard",
+      label: "Built-in UI keyboard",
+    }
+    return [builtin, ...(rigSources ?? [])]
+  }, [rigSources])
 
   // Reset undo history + selections whenever the active patch changes.
   // Cross-patch undo would surprise users; history belongs to the patch
@@ -454,12 +476,19 @@ export function PatchEditor({
   // Mutations
   // -------------------------------------------------------------------
 
-  const addNodeAt = (kind: NodeKind, pos: { x: number; y: number }) => {
-    const node = makeNode(kind, pos)
+  const addNodeAt = (
+    kind: NodeKind,
+    pos: { x: number; y: number },
+    overrides?: { name?: string; config?: Record<string, unknown> }
+  ) => {
+    const node = makeNode(kind, pos, overrides)
     setGraph((g) => ({ ...g, nodes: [...g.nodes, node] }))
     selectNode(node.id)
   }
-  const addNode = (kind: NodeKind) => addNodeAt(kind, { x: 120, y: 160 })
+  const addNode = (
+    kind: NodeKind,
+    overrides?: { name?: string; config?: Record<string, unknown> }
+  ) => addNodeAt(kind, { x: 120, y: 160 }, overrides)
 
   const moveNodes = (deltas: Array<{ id: string; x: number; y: number }>) => {
     setGraph(
@@ -1011,8 +1040,9 @@ export function PatchEditor({
           <InspectorFrame>
             <RightPanel
               onAddNode={addNode}
-              rigSources={rigSources}
+              rigSources={augmentedRigSources}
               onOpenRigScreen={() => setMode("rig")}
+              installedPlugins={installedPlugins}
               savedComposites={savedComposites}
             />
           </InspectorFrame>

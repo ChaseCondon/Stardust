@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { CLASS_COLORS, type NodeClass, type NodeKind } from "./_types"
 import { NODE_CATALOG } from "./_catalog"
+import type { ClapPluginInfo } from "@/lib/tauri"
 
 /**
  * A single source available from the user's configured rig. Sources only
@@ -20,12 +21,29 @@ export interface RigSource {
   label: string
 }
 
+/**
+ * Optional overrides for a spawn — used when the library entry knows
+ * more than the catalog default (e.g. a CLAP plugin card carries its
+ * choice so the new node lands pre-configured with that plugin).
+ */
+export interface AddNodeOverrides {
+  name?: string
+  config?: Record<string, unknown>
+}
+
 export interface RightPanelProps {
-  onAddNode?: (kind: NodeKind) => void
+  onAddNode?: (kind: NodeKind, overrides?: AddNodeOverrides) => void
   /** If provided, ONLY these source kinds appear in the Sources group. */
   rigSources?: RigSource[]
   /** Click handler for "Add additional source" — routes to the Rig screen. */
   onOpenRigScreen?: () => void
+  /**
+   * CLAP plugins discovered on disk. When provided, the Instruments
+   * group renders one card per plugin (each spawns an `instrument.plugin`
+   * node pre-configured with that plugin's choice). When undefined,
+   * falls back to the catalog's generic instrument entries (legacy).
+   */
+  installedPlugins?: ClapPluginInfo[]
   savedComposites?: Array<{ id: string; name: string; nodeCount: number }>
   onAddComposite?: (id: string) => void
   className?: string
@@ -40,6 +58,7 @@ export function RightPanel({
   onAddNode,
   rigSources,
   onOpenRigScreen,
+  installedPlugins,
   savedComposites = [],
   onAddComposite,
   className,
@@ -69,6 +88,7 @@ export function RightPanel({
             onAddNode={onAddNode}
             rigSources={rigSources}
             onOpenRigScreen={onOpenRigScreen}
+            installedPlugins={installedPlugins}
           />
         </ScrollArea>
       </TabsContent>
@@ -94,24 +114,41 @@ const CLASS_ORDER: NodeClass[] = [
   "sink",
 ]
 
+/**
+ * One library card. Renders as a draggable / clickable button that
+ * spawns a node with optional overrides (name / config). Used uniformly
+ * for rig sources, MIDI processors, plugins, audio effects, and sinks.
+ */
+interface LibraryItem {
+  /** Stable key for React. */
+  key: string
+  kind: NodeKind
+  label: string
+  description: string
+  overrides?: AddNodeOverrides
+}
+
 function LibraryContent({
   onAddNode,
   rigSources,
   onOpenRigScreen,
+  installedPlugins,
 }: {
-  onAddNode?: (kind: NodeKind) => void
+  onAddNode?: (kind: NodeKind, overrides?: AddNodeOverrides) => void
   rigSources?: RigSource[]
   onOpenRigScreen?: () => void
+  installedPlugins?: ClapPluginInfo[]
 }) {
-  const grouped = React.useMemo(() => {
+  const grouped = React.useMemo<Array<{ cls: NodeClass; items: LibraryItem[] }>>(() => {
     return CLASS_ORDER.map((cls) => {
       if (cls === "source") {
-        // Source group is constrained to whatever the user's rig actually has.
+        // Sources: rig-bound when the rig is known, else the catalog
+        // (legacy / no-rig context).
         if (rigSources === undefined) {
-          // No rig context provided — fall back to the catalog (legacy).
           return {
             cls,
             items: NODE_CATALOG.filter((s) => s.class === cls).map((s) => ({
+              key: `catalog-${s.kind}`,
               kind: s.kind,
               label: s.label,
               description: s.description,
@@ -120,31 +157,70 @@ function LibraryContent({
         }
         return {
           cls,
-          items: rigSources.map((src) => {
+          items: rigSources.map((src, i) => {
             const spec = NODE_CATALOG.find((s) => s.kind === src.kind)
             return {
+              key: `rig-${i}-${src.kind}`,
               kind: src.kind,
               label: src.label,
               description: spec?.description ?? "",
+              overrides: { name: src.label },
             }
           }),
+        }
+      }
+      if (cls === "instrument") {
+        // Instruments: render one card per discovered CLAP plugin,
+        // each pre-configured so the new node is hostable immediately.
+        // Drop the catalog's generic "Plugin instrument" and the
+        // "Built-in sine" — neither matched the way users think about
+        // instruments in a live performance context.
+        if (installedPlugins === undefined) {
+          return { cls, items: [] }
+        }
+        return {
+          cls,
+          items: installedPlugins.map((p) => ({
+            key: `plugin-${p.bundlePath}::${p.id}`,
+            kind: "instrument.plugin" as NodeKind,
+            label: p.name,
+            description: p.vendor || p.description || "CLAP plugin",
+            overrides: {
+              name: p.name,
+              config: {
+                bundlePath: p.bundlePath,
+                pluginId: p.id,
+                pluginName: p.name,
+                pluginVendor: p.vendor,
+              },
+            },
+          })),
         }
       }
       return {
         cls,
         items: NODE_CATALOG.filter((s) => s.class === cls).map((s) => ({
+          key: `catalog-${s.kind}`,
           kind: s.kind,
           label: s.label,
           description: s.description,
         })),
       }
     })
-  }, [rigSources])
+  }, [rigSources, installedPlugins])
 
   return (
     <div className="flex flex-col gap-4">
       {grouped.map(({ cls, items }) => {
         const isSources = cls === "source"
+        const isInstruments = cls === "instrument"
+        const emptyMessage = isSources
+          ? "No sources in your rig yet."
+          : isInstruments
+            ? installedPlugins === undefined
+              ? "Plugin scan not available outside Tauri."
+              : "No CLAP plugins found on disk."
+            : null
         return (
           <div key={cls} className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2 px-1">
@@ -158,14 +234,14 @@ function LibraryContent({
               </span>
             </div>
             <div className="flex flex-col gap-1">
-              {items.length === 0 && isSources && (
+              {items.length === 0 && emptyMessage && (
                 <div className="rounded-md border border-dashed bg-muted/20 px-2.5 py-3 text-center text-[11px] text-muted-foreground">
-                  No sources in your rig yet.
+                  {emptyMessage}
                 </div>
               )}
               {items.map((item) => (
                 <div
-                  key={`${cls}-${item.kind}-${item.label}`}
+                  key={item.key}
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.effectAllowed = "copy"
@@ -173,13 +249,20 @@ function LibraryContent({
                       "application/x-stardust-node-kind",
                       item.kind
                     )
+                    if (item.overrides) {
+                      e.dataTransfer.setData(
+                        "application/x-stardust-node-overrides",
+                        JSON.stringify(item.overrides)
+                      )
+                    }
                     e.dataTransfer.setData("text/plain", item.label)
                   }}
-                  onClick={() => onAddNode?.(item.kind)}
+                  onClick={() => onAddNode?.(item.kind, item.overrides)}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") onAddNode?.(item.kind)
+                    if (e.key === "Enter" || e.key === " ")
+                      onAddNode?.(item.kind, item.overrides)
                   }}
                   className="group flex w-full cursor-grab items-center gap-3 rounded-md border bg-background px-2.5 py-2 text-left transition-colors hover:border-primary/50 hover:bg-muted/40 active:cursor-grabbing"
                   title="Click to add at center, or drag onto the canvas"

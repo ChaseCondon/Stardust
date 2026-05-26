@@ -10,6 +10,7 @@
 
 mod commands;
 mod engine;
+mod engine_graph;
 
 use tauri::Manager;
 

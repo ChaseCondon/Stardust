@@ -89,8 +89,16 @@ export interface PatchCanvasProps {
   ) => void
   /** Single-click on composite title chip — opens settings panel for it. */
   onSelectComposite?: (compositeId: string) => void
-  /** Library drag-to-place handler. Receives the dropped kind + canvas pos. */
-  onDropFromLibrary?: (kind: NodeKind, canvasPos: { x: number; y: number }) => void
+  /**
+   * Library drag-to-place handler. Receives the dropped kind, canvas
+   * pos, and optional overrides (name / config) when the library card
+   * carried them — e.g. a CLAP plugin card pre-fills the plugin choice.
+   */
+  onDropFromLibrary?: (
+    kind: NodeKind,
+    canvasPos: { x: number; y: number },
+    overrides?: { name?: string; config?: Record<string, unknown> }
+  ) => void
   /** Per-node validation status badges. */
   validation?: Map<string, { level: "warning" | "error"; message: string }>
   /** Per-node solo state. */
@@ -537,7 +545,19 @@ export function PatchCanvas({
     if (!kind) return
     e.preventDefault()
     const cs = toCanvasSpace(e)
-    onDropFromLibrary?.(kind as NodeKind, cs)
+    const overridesRaw = e.dataTransfer.getData(
+      "application/x-stardust-node-overrides"
+    )
+    let overrides: { name?: string; config?: Record<string, unknown> } | undefined
+    if (overridesRaw) {
+      try {
+        overrides = JSON.parse(overridesRaw)
+      } catch {
+        // Malformed payload — ignore and spawn with defaults. Drag came
+        // from outside our library; not worth surfacing an error.
+      }
+    }
+    onDropFromLibrary?.(kind as NodeKind, cs, overrides)
   }
 
   // -------------------------------------------------------------------------

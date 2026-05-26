@@ -221,20 +221,28 @@ export function typeLabelFor(kind: NodeKind): string {
 }
 
 let nextId = 1
+/**
+ * Build a fresh graph node. `overrides.name` replaces the spec's default
+ * label (used when dropping a CLAP plugin from the library so the new
+ * node reads "Surge XT" instead of "Plugin instrument"); `overrides.config`
+ * replaces the spec's default config bag entirely (used to pre-fill the
+ * plugin choice on a dropped `instrument.plugin`).
+ */
 export function makeNode(
   kind: NodeKind,
-  position: { x: number; y: number }
+  position: { x: number; y: number },
+  overrides?: { name?: string; config?: Record<string, unknown> }
 ): GraphNode {
   const spec = findSpec(kind)
   if (!spec) throw new Error(`Unknown node kind: ${kind}`)
   return {
     id: `n${nextId++}`,
     kind,
-    name: spec.label,
+    name: overrides?.name ?? spec.label,
     x: position.x,
     y: position.y,
     ports: spec.defaultPorts(),
-    config: spec.defaultConfig?.(),
+    config: overrides?.config ?? spec.defaultConfig?.(),
   }
 }
 

@@ -48,8 +48,83 @@ interface ShowState {
   setGraph: (patchId: string, graph: PatchGraph) => void
   selectPatch: (patchId: string) => void
   replaceShow: (doc: ShowDocument) => void
+  /**
+   * Reset the store to a minimal blank show: one untitled song with one
+   * untitled patch holding an empty graph, no rig sources, no saved
+   * blocks. The next save will prompt for a filename.
+   */
+  newShow: () => void
+  /**
+   * Append a new song to the show with one empty patch, and select that
+   * patch. ID + number are picked to be unique within the current show
+   * (ADR-0005: patch ids must be unique show-wide, not just per song).
+   */
+  addSong: () => void
+  /**
+   * Append a new empty patch to the given song and select it. No-op if
+   * the song id isn't found.
+   */
+  addPatch: (songId: string) => void
   markClean: () => void
   getDocument: () => ShowDocument
+}
+
+/** Pick the next `s<N>` id not already in use by any song. */
+function nextSongId(songs: SongWire[]): string {
+  const taken = new Set(songs.map((s) => s.id))
+  let n = songs.length + 1
+  while (taken.has(`s${n}`)) n++
+  return `s${n}`
+}
+
+/**
+ * Pick a fresh patch id within the given song scope, formatted to look
+ * like the seed convention (`p<song-num>.<patch-num>`). Falls back to
+ * appending a numeric suffix if the natural name collides — patch ids
+ * must be unique show-wide per ADR-0005.
+ */
+function nextPatchId(songId: string, allPatchIds: Set<string>, patchCount: number): string {
+  const songNum = songId.match(/^s(\d+)$/)?.[1] ?? songId.replace(/[^a-z0-9]/gi, "")
+  let n = patchCount + 1
+  let candidate = `p${songNum}.${n}`
+  while (allPatchIds.has(candidate)) {
+    n++
+    candidate = `p${songNum}.${n}`
+  }
+  return candidate
+}
+
+/**
+ * Minimal blank show used by `newShow()`. One song / one patch / empty
+ * graph — gives the user a slot to start dropping nodes into without
+ * having to navigate the outline first.
+ */
+function buildBlankShow(): {
+  showName: string
+  songs: SongWire[]
+  rig: RigWire
+  savedBlocks: SavedBlockWire[]
+  currentPatchId: string
+} {
+  const patch: PatchWire = {
+    id: "p1.1",
+    number: 1,
+    name: "Untitled patch",
+    graph: { nodes: [], wires: [], composites: [] },
+  }
+  const song: SongWire = {
+    id: "s1",
+    number: 1,
+    name: "Untitled song",
+    patches: [patch],
+  }
+  return {
+    showName: "Untitled show",
+    songs: [song],
+    rig: { sources: [] },
+    savedBlocks: [],
+    currentPatchId: patch.id,
+  }
 }
 
 /**
@@ -120,6 +195,60 @@ export const useShowStore = create<ShowState>()((set, get) => {
         savedBlocks: doc.show.savedBlocks ?? [],
         currentPatchId: doc.show.songs[0]?.patches[0]?.id,
         dirty: false,
+      }),
+
+    newShow: () => set({ ...buildBlankShow(), dirty: false }),
+
+    addSong: () =>
+      set((s) => {
+        const songId = nextSongId(s.songs)
+        const allPatchIds = new Set(
+          s.songs.flatMap((x) => x.patches.map((p) => p.id)),
+        )
+        const patchId = nextPatchId(songId, allPatchIds, 0)
+        const newSong: SongWire = {
+          id: songId,
+          number: s.songs.length + 1,
+          name: "New song",
+          patches: [
+            {
+              id: patchId,
+              number: 1,
+              name: "New patch",
+              graph: { nodes: [], wires: [], composites: [] },
+            },
+          ],
+        }
+        return {
+          songs: [...s.songs, newSong],
+          currentPatchId: patchId,
+          dirty: true,
+        }
+      }),
+
+    addPatch: (songId) =>
+      set((s) => {
+        const song = s.songs.find((x) => x.id === songId)
+        if (!song) return s
+        const allPatchIds = new Set(
+          s.songs.flatMap((x) => x.patches.map((p) => p.id)),
+        )
+        const patchId = nextPatchId(songId, allPatchIds, song.patches.length)
+        const newPatch: PatchWire = {
+          id: patchId,
+          number: song.patches.length + 1,
+          name: "New patch",
+          graph: { nodes: [], wires: [], composites: [] },
+        }
+        return {
+          songs: s.songs.map((x) =>
+            x.id === songId
+              ? { ...x, patches: [...x.patches, newPatch] }
+              : x,
+          ),
+          currentPatchId: patchId,
+          dirty: true,
+        }
       }),
 
     markClean: () => set({ dirty: false }),

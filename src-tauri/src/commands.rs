@@ -21,7 +21,7 @@
 use serde::{Deserialize, Serialize};
 use stardust_core::audio;
 use stardust_core::midi::{self, MidiMessage};
-use stardust_core::show::{NodeKind, Patch, ShowDocument, ShowValidationError};
+use stardust_core::show::{Patch, ShowDocument, ShowValidationError};
 use stardust_core::plugin::clap;
 use tauri::State;
 use tokio::sync::Mutex;
@@ -202,37 +202,35 @@ pub async fn list_audio_outputs(
 // =============================================================================
 // Engine state
 //
-// The host runs on a dedicated OS thread (see `engine` module) because
-// `PluginInstance<H>` is `!Send`. These commands forward intent to that
-// thread; the UI hears about state changes via the `engine://status`
-// Tauri event, and can pull the current snapshot via `engine_status`.
+// The engine host runs on a dedicated OS thread (see `engine` module)
+// because plugin instances are `!Send`. These commands forward intent
+// to that thread; the UI hears about state changes via the
+// `engine://status` Tauri event, and can pull the current snapshot via
+// `engine_status`.
 //
-// The Start command takes a full `Patch` from the show store (graph +
-// meta) rather than a flat bundle/plugin id pair: per v0.7 the engine
-// is patch-driven, and we walk the graph here to locate the first
-// `instrument.plugin` node and lift its plugin choice into the engine's
-// `StartConfig`. Multi-plugin chains are a follow-up.
+// Since v0.8b, Start takes the whole patch graph — the engine builds an
+// executable plan (per ADR-0006) that walks every node, hosts every
+// `instrument.plugin`, and runs the native DSP nodes (`audio.eq`,
+// `audio.mix`, `instrument.sine`, `midi.transpose`, `midi.mix`). Per-
+// node failures (a plugin that won't load, a missing config) come back
+// asynchronously via `EngineStatus::Error` so the UI can show them as
+// a list.
 // =============================================================================
 
-/// Why `engine_start_from_patch` couldn't bring a patch online. Structured
-/// so the UI can render each failure case meaningfully — "this patch has
-/// no instrument node" vs. "the instrument node has no plugin chosen yet"
-/// vs. a raw engine failure (audio/MIDI/CLAP load).
+/// Why `engine_start_from_patch` couldn't even queue a start. Surfacing
+/// synchronously here is reserved for the engine channel being closed —
+/// every other failure mode is asynchronous (plan-build, plugin load)
+/// and comes back via `EngineStatus::Error`.
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum EngineStartError {
-    /// Patch graph has zero `instrument.plugin` nodes.
-    NoInstrumentNode,
-    /// First instrument node has empty / missing bundle path + plugin id.
-    /// `node` is the human-friendly name so the UI can point at it.
-    MissingPluginConfig { node: String },
     /// The engine command channel rejected the send.
     Engine { message: String },
 }
 
-/// Start the engine from the active patch. `midi_input = None` runs with
-/// no hardware MIDI input — the engine still hosts and audibly plays
-/// whatever the on-screen keyboard injects via `engine_send_midi`.
+/// Start the engine from the active patch. `midi_input = None` runs
+/// with no hardware MIDI input — the engine still hosts and audibly
+/// plays whatever the on-screen keyboard injects via `engine_send_midi`.
 #[tauri::command]
 pub fn engine_start_from_patch(
     patch: Patch,
@@ -240,22 +238,9 @@ pub fn engine_start_from_patch(
     audio_output: Option<String>,
     engine: State<'_, EngineHandle>,
 ) -> Result<(), EngineStartError> {
-    let instrument = patch
-        .graph
-        .nodes
-        .iter()
-        .find(|n| n.kind == NodeKind::InstrumentPlugin)
-        .ok_or(EngineStartError::NoInstrumentNode)?;
-
-    let (bundle_path, plugin_id) = extract_plugin_choice(&instrument.config)
-        .ok_or_else(|| EngineStartError::MissingPluginConfig {
-            node: instrument.name.clone(),
-        })?;
-
     engine
         .send(EngineCommand::Start(StartConfig {
-            bundle_path: bundle_path.into(),
-            plugin_id,
+            graph: patch.graph,
             midi_input,
             audio_output,
         }))
@@ -300,19 +285,6 @@ impl From<UiMidiMessage> for MidiMessage {
             },
         }
     }
-}
-
-/// Pull `{ bundlePath, pluginId }` out of an `instrument.plugin` node's
-/// free-form config bag. The TS picker writes both keys atomically, but
-/// either can be missing / empty if the user hasn't picked yet.
-fn extract_plugin_choice(config: &Option<serde_json::Value>) -> Option<(String, String)> {
-    let obj = config.as_ref()?.as_object()?;
-    let bundle_path = obj.get("bundlePath")?.as_str()?;
-    let plugin_id = obj.get("pluginId")?.as_str()?;
-    if bundle_path.is_empty() || plugin_id.is_empty() {
-        return None;
-    }
-    Some((bundle_path.to_string(), plugin_id.to_string()))
 }
 
 #[tauri::command]

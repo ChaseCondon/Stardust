@@ -7,7 +7,9 @@ import {
   type AudioOutputInfo,
   type EngineStartError,
   type EngineStatus,
+  type HostedPluginStatus,
   type MidiInputInfo,
+  type NativeNodeCounts,
   type PatchWire,
   asEngineStartError,
   engineStartFromPatch,
@@ -21,13 +23,13 @@ import {
 
 /**
  * Diagnostic engine routing panel. The engine is always-on: it hosts
- * whatever the currently-selected patch points at, and stops itself when
- * the patch has no plugin to host. There is no Start/Stop button. The
- * panel exposes the routing knobs (MIDI input, audio output) plus a live
- * status readout. Changing either dropdown rebinds the engine.
+ * whatever the currently-selected patch points at and stops itself when
+ * the patch has no instruments at all. Since v0.8b the engine consumes
+ * the whole patch graph (multi-plugin chains + native DSP), not just
+ * the first instrument node. The status line lists every hosted plugin
+ * and a count of native nodes.
  *
- * Hidden when not running inside Tauri (Storybook / web dev) — the
- * commands would fail anyway and the device lists would be empty.
+ * Hidden when not running inside Tauri (Storybook / web dev).
  */
 export function EnginePanel() {
   const inTauri = useMemo(() => isTauri(), [])
@@ -47,9 +49,8 @@ function EnginePanelInner() {
 
   const { refresh: refreshPluginScan } = usePluginScan()
 
-  // Subscribe to just enough store state to find the current patch. The
-  // engine command needs the full patch (graph + meta) on Start, not a
-  // derived selector — so we pull the raw fields and resolve in render.
+  // Pull the raw fields and resolve the current patch in render — the
+  // engine command needs the full patch (graph + meta) on Start.
   const songs = useShowStore((s) => s.songs)
   const currentPatchId = useShowStore((s) => s.currentPatchId)
   const currentPatch: PatchWire | undefined = useMemo(() => {
@@ -60,24 +61,30 @@ function EnginePanelInner() {
     }
     return undefined
   }, [songs, currentPatchId])
-  const pluginChoice = useMemo(() => {
+
+  // Plan signature: includes every instrument node's choice. Used to
+  // decide whether the engine should be on AND whether to rebind when
+  // a plugin pick changes. Adds/removes of effects (eq, mix) don't
+  // rebind today — switch patches to reload.
+  const planSignature = useMemo(() => {
     if (!currentPatch) return undefined
+    const parts: string[] = []
     for (const n of currentPatch.graph.nodes) {
       if (n.kind === "instrument.plugin") {
         const c = getPluginChoice(n)
-        if (c) return c
+        parts.push(c ? `plug:${c.bundlePath}|${c.pluginId}` : `plug:unconfigured`)
+      } else if (n.kind === "instrument.sine") {
+        parts.push(`sine`)
       }
     }
-    return undefined
+    return parts.length === 0 ? undefined : parts.join(";")
   }, [currentPatch])
 
   useEffect(() => {
     void refreshDevices(setMidiInputs, setAudioOutputs)
   }, [])
 
-  // Initial status pull + subscribe to changes. The pull catches the
-  // case where the engine is already running when the panel mounts
-  // (e.g. HMR remount); the listener gets every subsequent change.
+  // Initial status pull + subscribe to changes.
   const unlistenRef = useRef<(() => void) | null>(null)
   useEffect(() => {
     let alive = true
@@ -96,31 +103,18 @@ function EnginePanelInner() {
     }
   }, [])
 
-  // Auto-pick the first hardware MIDI input once devices load — saves the
-  // user a dropdown click. Users without a controller stay on "__none__"
-  // and play via the on-screen keyboard.
+  // Auto-pick the first hardware MIDI input once devices load.
   useEffect(() => {
     if (midiInput === "__none__" && midiInputs.length > 0) {
       setMidiInput(midiInputs[0].name)
     }
   }, [midiInputs, midiInput])
 
-  // Sync the engine to the desired state (always-on model).
-  //
-  // The desired state is a pure function of (current patch, plugin choice,
-  // midi input, audio output). Whenever any input changes:
-  //  - If the patch has a hostable plugin → bring up / rebind to it with
-  //    the current routing.
-  //  - Otherwise → stop the engine (silence when there's nothing to play).
-  //
-  // The Rust engine's Start command tears down any previous plugin before
-  // bringing up the next one, so rebind is just another Start call. A ref
-  // tracks the last params we asked for so we skip no-op rebinds when an
-  // unrelated dep moves.
+  // Sync the engine to the desired state. Always-on: if the patch has
+  // any hostable instrument the engine runs; otherwise we stop.
   const lastSyncRef = useRef<{
     patchId: string | undefined
-    bundlePath: string | undefined
-    pluginId: string | undefined
+    signature: string | undefined
     midiInput: string
     audioOutput: string
   } | null>(null)
@@ -128,8 +122,7 @@ function EnginePanelInner() {
   useEffect(() => {
     const want = {
       patchId: currentPatch?.id,
-      bundlePath: pluginChoice?.bundlePath,
-      pluginId: pluginChoice?.pluginId,
+      signature: planSignature,
       midiInput,
       audioOutput,
     }
@@ -137,8 +130,7 @@ function EnginePanelInner() {
     if (
       prev &&
       prev.patchId === want.patchId &&
-      prev.bundlePath === want.bundlePath &&
-      prev.pluginId === want.pluginId &&
+      prev.signature === want.signature &&
       prev.midiInput === want.midiInput &&
       prev.audioOutput === want.audioOutput
     ) {
@@ -149,7 +141,7 @@ function EnginePanelInner() {
     let cancelled = false
     void (async () => {
       setSyncError(undefined)
-      if (!currentPatch || !pluginChoice) {
+      if (!currentPatch || !planSignature) {
         try {
           await engineStop()
         } catch {
@@ -170,7 +162,7 @@ function EnginePanelInner() {
     return () => {
       cancelled = true
     }
-  }, [currentPatch, pluginChoice, midiInput, audioOutput])
+  }, [currentPatch, planSignature, midiInput, audioOutput])
 
   return (
     <div className="border-b border-border bg-muted/40 px-3 py-2 text-sm">
@@ -179,10 +171,7 @@ function EnginePanelInner() {
           Engine
         </span>
 
-        <PatchPluginChip
-          patchName={currentPatch?.name}
-          pluginName={pluginChoice?.pluginName}
-        />
+        <PatchChip patchName={currentPatch?.name} signature={planSignature} />
 
         <select
           className="rounded border bg-background px-2 py-1 text-xs"
@@ -232,23 +221,22 @@ function EnginePanelInner() {
   )
 }
 
-function PatchPluginChip({
+function PatchChip({
   patchName,
-  pluginName,
+  signature,
 }: {
   patchName: string | undefined
-  pluginName: string | undefined
+  signature: string | undefined
 }) {
   return (
     <div className="flex items-center gap-1.5 rounded border bg-background px-2 py-1 text-xs">
       <span className="text-muted-foreground">Patch:</span>
       <span className="font-medium">{patchName ?? "—"}</span>
       <span className="text-muted-foreground">·</span>
-      <span className="text-muted-foreground">Plugin:</span>
       <span
-        className={pluginName ? "font-medium" : "italic text-muted-foreground"}
+        className={signature ? "font-medium" : "italic text-muted-foreground"}
       >
-        {pluginName ?? "none"}
+        {signature ? "ready" : "no instruments"}
       </span>
     </div>
   )
@@ -273,17 +261,29 @@ function StatusLine({
   }
   if (status.kind === "error") {
     return (
-      <span className="text-xs text-destructive" title={status.message}>
-        Error: {status.message}
+      <span
+        className="text-xs text-destructive"
+        title={status.messages.join("\n")}
+      >
+        Error: {status.messages[0]}
+        {status.messages.length > 1 && ` (+${status.messages.length - 1} more)`}
       </span>
     )
   }
   return (
     <span className="text-xs text-muted-foreground">
-      <span className="font-medium text-foreground">Running</span> · {status.pluginName} ·{" "}
-      {status.audioOutput} @ {status.sampleRate / 1000} kHz / {status.channels}ch
+      <span className="font-medium text-foreground">Running</span> ·{" "}
+      <PluginList plugins={status.plugins} />
+      <NativeSummary counts={status.nativeNodes} />
+      <span>
+        {" "}
+        · {status.audioOutput} @ {status.sampleRate / 1000} kHz /{" "}
+        {status.channels}ch
+      </span>
       {status.droppedEvents > 0 && (
-        <span className="ml-2 text-amber-600">⚠ {status.droppedEvents} dropped</span>
+        <span className="ml-2 text-amber-600">
+          ⚠ {status.droppedEvents} dropped
+        </span>
       )}
       {status.sampleRateMismatch && (
         <span className="ml-2 text-amber-600">⚠ sample-rate mismatch</span>
@@ -292,15 +292,33 @@ function StatusLine({
   )
 }
 
-function describeStartError(e: EngineStartError): string {
-  switch (e.kind) {
-    case "noInstrumentNode":
-      return "This patch has no instrument node. Add one in the editor."
-    case "missingPluginConfig":
-      return `Pick a plugin on "${e.node}" in the patch editor.`
-    case "engine":
-      return `Engine: ${e.message}`
+function PluginList({ plugins }: { plugins: HostedPluginStatus[] | undefined }) {
+  const list = plugins ?? []
+  if (list.length === 0) return <span className="italic">no plugins</span>
+  if (list.length === 1) {
+    return <span>{list[0].name}</span>
   }
+  return (
+    <span title={list.map((p) => `${p.name} (${p.vendor})`).join("\n")}>
+      {list.length} plugins ({list.map((p) => p.name).join(", ")})
+    </span>
+  )
+}
+
+function NativeSummary({ counts }: { counts: NativeNodeCounts | undefined }) {
+  if (!counts) return null
+  const parts: string[] = []
+  if ((counts.sine ?? 0) > 0) parts.push(`${counts.sine} sine`)
+  if ((counts.eq ?? 0) > 0) parts.push(`${counts.eq} EQ`)
+  if ((counts.audioMix ?? 0) > 0) parts.push(`${counts.audioMix} mix`)
+  if ((counts.midiTranspose ?? 0) > 0) parts.push(`${counts.midiTranspose} transpose`)
+  if ((counts.midiMix ?? 0) > 0) parts.push(`${counts.midiMix} midi-mix`)
+  if (parts.length === 0) return null
+  return <span> · {parts.join(", ")}</span>
+}
+
+function describeStartError(e: EngineStartError): string {
+  return `Engine: ${e.message}`
 }
 
 async function refreshDevices(
