@@ -1,0 +1,49 @@
+name: Feature
+description: A new user-visible piece of functionality.
+title: "Feature: "
+type: Feature
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for **new user-visible functionality**. For infra / CI / tech-debt / docs / refactors → use **Task**. For broken behavior → use **Bug**.
+
+        After creation, add the relevant **area label** (`screen:*`, `engine:*`, `extension`, etc.) and the **milestone**. **Estimate** + **Priority** are set during the version's pre-feature refinement session, not at creation — see [CONTRIBUTING](../../blob/main/CONTRIBUTING.md).
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why this matters; what problem it solves; what user-journey step it serves.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What "done" looks like. Concrete enough that another contributor could pick it up.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope (deferred)
+      description: What this issue explicitly does NOT cover, with where it lives instead.
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Cross-issue dependencies
+      description: Issues this blocks / is blocked by. Use native parent/child sub-issues for umbrella relationships.
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Roadmap entry, related docs pages, ADRs, prior issues.

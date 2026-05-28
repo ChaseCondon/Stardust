@@ -1,0 +1,65 @@
+name: Bug
+description: Something is broken or behaves unexpectedly.
+title: "Bug: "
+type: Bug
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for **broken / unexpected behavior** in a shipping build. For new functionality → use **Feature**. For infra/tech-debt → use **Task**.
+
+        If this is **show-blocking**, set Priority to **P0** and ping the maintainer.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / build
+      description: "Tag (e.g. v0.5.0), commit SHA, or dev build identifier."
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: "macOS 14.4 Apple Silicon / Windows 11 / Ubuntu 22.04"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots / engine-monitor state
+      description: Anything that helps locate the failure. Attach crash reports if any.
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Audio + MIDI hardware (if relevant)
+      description: Interface, sample rate, buffer size, attached MIDI devices.

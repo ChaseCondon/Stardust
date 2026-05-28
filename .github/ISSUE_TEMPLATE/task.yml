@@ -1,0 +1,46 @@
+name: Task
+description: Infrastructure, CI, tech-debt, docs, refactor, chore. Anything that isn't new user-visible functionality.
+title: "Task: "
+type: Task
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for **infra, CI, tech-debt, docs, refactors, chores**. For new user-visible features → use **Feature**. For broken behavior → use **Bug**.
+
+        Add the relevant **cross-cutting label** (`tech-debt`, `infrastructure`, `documentation`, `extension`) plus an area label if applicable. **Estimate** + **Priority** are set during refinement — see [CONTRIBUTING](../../blob/main/CONTRIBUTING.md).
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why this matters now / what triggered it / what it unblocks.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: cleanup-target
+    attributes:
+      label: Cleanup target (tech-debt only)
+      description: Which version is expected to clean this up, or "no plan yet."
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Cross-issue dependencies
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References

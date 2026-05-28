@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Stardust Pit docs
+    url: https://stardustmt.github.io/docs/pit/
+    about: The user textbook — concepts, features, architecture, roadmap, decisions.
+  - name: Project board
+    url: https://github.com/orgs/StardustMT/projects/1
+    about: Roadmap + every open + closed work item as a filterable issue.
+  - name: Contributing guide
+    url: https://github.com/StardustMT/stardust-pit/blob/main/CONTRIBUTING.md
+    about: How issues + commits + PRs work in this project.

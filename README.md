@@ -95,15 +95,18 @@ Stardust is a Tauri 2 application:
 
 Plugins run in sandboxed child processes, communicating with the host over shared-memory ring buffers. A crashing plugin cannot take down the audio engine.
 
-See the [Architecture Overview](https://github.com/StardustMT/stardust-pit/wiki/Architecture-Overview) on the wiki for diagrams and detail.
+See the [Architecture Overview](https://stardustmt.github.io/docs/pit/architecture/overview/) in the docs for diagrams and detail.
 
-## Roadmap
+## Docs + roadmap + board
 
-The 1.0 release is the goal. Progress and per-phase detail live on the [Roadmap](https://github.com/StardustMT/stardust-pit/wiki/Roadmap) wiki page.
+- **Docs** — [stardustmt.github.io/docs/pit/](https://stardustmt.github.io/docs/pit/) — the user textbook (concepts, features, architecture, reliability)
+- **Roadmap** — [v0.6.0 → v1.0.0 with exit criteria](https://stardustmt.github.io/docs/pit/roadmap/)
+- **Project board** — [every open + closed work item, filterable](https://github.com/orgs/StardustMT/projects/1) (shared with [`stardust-core`](https://github.com/StardustMT/stardust-core))
+- **Locked decisions** — [the architectural + product decisions baked in](https://stardustmt.github.io/docs/pit/decisions/)
 
 ## Contributing
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Open an [issue](https://github.com/StardustMT/stardust-pit/issues) or join the [discussions](https://github.com/StardustMT/stardust-pit/discussions).
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Issue templates are in place — pick **Feature** / **Task** / **Bug** when opening a [new issue](https://github.com/StardustMT/stardust-pit/issues/new/choose).
 
 ## License
 
